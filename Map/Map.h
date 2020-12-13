@@ -2,9 +2,10 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include "../Observer/Observer.h"
-
+#include "../Player/player.h"
 
 using namespace std;
 /**
@@ -18,6 +19,7 @@ class MapEdge;
 class Continent;
 class Country;
 class GameStatsObserver;
+class Player;
 
 
 enum class TerritoryType {
@@ -80,6 +82,7 @@ public:
 	vector<MapComponent*> getAdjacentTerritories();
 	vector<Country*> getAdjacentCountries();
 	TerritoryType getTerritoryType();
+	int getId();
 	
 
 private:
@@ -115,10 +118,13 @@ public:
 	friend ostream& operator<<(ostream& out, const Continent& toOut);
 
 	void addVertex(Country* country);
-
+	int getNumCountries();
+	void setBonus(int bonus) { this->continentBonus = bonus; }
+	int getBonus() { return this->continentBonus; }
 
 private:
 	vector<Country*> vertices;
+	int continentBonus;
 };
 
 
@@ -143,14 +149,34 @@ public:
 	friend ostream& operator<<(ostream& out, const Country& toOut);
 
 	void setParent(Continent* parent);
-	void setPlayerOwnership(int playerId);
+	void setPlayerOwnership(Player* player);
 	string getContinentParentName();
 	int getPlayerOwnership();
+	void setArmiesOnTerritory(int a);
+	int getArmiesOnTerritory();
+	int getParentNumCountries();
+	int getParentId();
+	int getParentBonus();
+	void deployArmies(int numDeploying);
+	int reduceArmies(int numLeavingToAttack);
 
+	int getCountryId() { return this->territoryId; }
+	void sustainOpponentLosses(int numLost);
+	void setArmiesAdvancingDuringRound(int advancing) { this->armiesAdvancingDuringRound = advancing; }
+	void resetAdvancing() { this->armiesAdvancingDuringRound = 0; }
+	int getAdvancing() { return this->armiesAdvancingDuringRound; }
+
+	void bomb();
+	void blockade();
+	void initiateDiplomacy(int diplomacyId);
+	bool diplomaticallyBlocked(int playerId);
 
 private:
 	Continent* parent;
+	Player* owner;
 	int playerId;
+	int armies;
+	int armiesAdvancingDuringRound;
 };
 
 
@@ -185,12 +211,15 @@ public:
 	void addContinentByReference(Continent* continent);
 	bool edgeExists(MapComponent* territoryOne, MapComponent* territoryTwo);
 	bool validate();
-	Country* setPlayerOwnership(int playerId, string territoryName);
+	Country* setPlayerOwnership(Player* player, string territoryName);
 	vector<Country*> getCountries();
 	int getNumContinents();
 	int getNumCountries();
 
 	void attachGameStatsObserver(GameStatsObserver* gso);
+
+	int deservesContinentBonus(int playerId);
+	void setContinentBonus(string continentName, int bonus);
 
 private:
 	string mapName;

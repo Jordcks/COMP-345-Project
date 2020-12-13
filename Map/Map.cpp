@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <map>
 #include "Map.h"
 #include "../Observer/Observer.h"
 
@@ -206,6 +207,10 @@ TerritoryType MapComponent::getTerritoryType() {
 	return this->territoryType;
 }
 
+int MapComponent::getId() {
+	return this->territoryId;
+}
+
 
 
 
@@ -220,10 +225,12 @@ TerritoryType MapComponent::getTerritoryType() {
 
 Continent::Continent(string territoryName) : MapComponent(territoryName, TerritoryType::Continent) {
 	this->vertices;
+	this->continentBonus = 0;
 }
 
 Continent::Continent(const Continent& source) : MapComponent(source) {
 	this->vertices;
+	this->continentBonus = source.continentBonus;
 	
 	for (Country* c : source.vertices) {
 		this->vertices.push_back(c);
@@ -242,6 +249,7 @@ Continent& Continent::operator=(const Continent& rhs) {
 	this->territoryType = rhs.territoryType;
 	this->territoryId = rhs.territoryId;
 	this->territoryName = rhs.territoryName;
+	this->continentBonus = rhs.continentBonus;
 	this->connections.clear();
 
 	for (MapEdge* e : rhs.connections) {
@@ -272,6 +280,9 @@ void Continent::addVertex(Country* country) {
 	this->vertices.push_back(country);
 }
 
+int Continent::getNumCountries() {
+	return this->vertices.size();
+}
 
 
 
@@ -287,11 +298,17 @@ void Continent::addVertex(Country* country) {
 Country::Country(string territoryName) : MapComponent(territoryName, TerritoryType::Country) {
 	this->parent = nullptr;
 	this->playerId = -1;
+	this->armies = 0;
+	this->owner = nullptr;
+	this->armiesAdvancingDuringRound = 0;
 }
 
 Country::Country(const Country& source) : MapComponent(source) {
 	this->parent = source.parent;
 	this->playerId = source.playerId;
+	this->armies = source.armies;
+	this->owner = source.owner;
+	this->armiesAdvancingDuringRound = source.armiesAdvancingDuringRound;
 }
 
 Country::~Country() {
@@ -308,6 +325,7 @@ Country& Country::operator=(const Country& rhs) {
 	this->territoryId = rhs.territoryId;
 	this->territoryName = rhs.territoryName;
 	this->connections.clear();
+	this->owner = rhs.owner;
 
 	for (MapEdge* e : rhs.connections) {
 		this->connections.push_back(e);
@@ -315,6 +333,8 @@ Country& Country::operator=(const Country& rhs) {
 
 	this->parent = rhs.parent;
 	this->playerId = rhs.playerId;
+	this->armies = rhs.armies;
+	this->armiesAdvancingDuringRound = rhs.armiesAdvancingDuringRound;
 	return *this;
 }
 
@@ -332,8 +352,18 @@ void Country::setParent(Continent* parent) {
 	this->parent = parent;
 }
 
-void Country::setPlayerOwnership(int playerId) {
-	this->playerId = playerId;
+void Country::setPlayerOwnership(Player* player) {
+	if (player == nullptr) {
+		this->playerId = -1;
+		this->owner = nullptr;
+	}
+	else {
+		if (this->owner != nullptr && this->playerId != player->getPlayerId()) {
+			this->owner->lostCountry(this);
+		}
+		this->playerId = player->getPlayerId();
+		this->owner = player;
+	}
 }
 
 string Country::getContinentParentName() {
@@ -344,6 +374,73 @@ int Country::getPlayerOwnership() {
 	return this->playerId;
 }
 
+int Country::getParentId() {
+	return this->parent->getId();
+}
+
+int Country::getParentNumCountries() {
+	return this->parent->getNumCountries();
+}
+
+void Country::setArmiesOnTerritory(int a) {
+	this->armies = a;
+	if (this->armies < 0) {
+		cout << "UHOH";
+	}
+}
+
+int Country::getArmiesOnTerritory() {
+	return this->armies;
+}
+
+int Country::getParentBonus() {
+	return this->parent->getBonus();
+}
+
+void Country::deployArmies(int numDeploying) {
+	this->armies += numDeploying;
+}
+
+int Country::reduceArmies(int numLeavingToAttack) {
+	if (numLeavingToAttack > this->armies) {
+		numLeavingToAttack = this->armies;
+	}
+	this->armies -= numLeavingToAttack;
+	if (this->armies < 0) {
+		cout << "UHOH";
+	}
+	return numLeavingToAttack;
+}
+
+void Country::sustainOpponentLosses(int numLost) {
+	if (this->playerId != -1) {
+		this->owner->sustainedLosses(numLost);
+	}
+}
+
+void Country::blockade() {
+	this->owner->wasConquered(this->armies, this->territoryName);
+	this->owner = nullptr;
+	this->playerId = -1;
+	this->armies *= 2;
+}
+
+void Country::initiateDiplomacy(int diplomacyId) {
+	this->owner->initiateDiplomacy(diplomacyId);
+}
+
+bool Country::diplomaticallyBlocked(int playerId) {
+	return this->owner->getNegotiator() == playerId;
+}
+
+void Country::bomb() {
+	int survivingArmies = this->armies / 2;
+	int bombedArmies = this->armies - survivingArmies;
+	if (this->owner != nullptr) {
+		this->owner->sustainedLosses(bombedArmies);
+	}
+	this->armies = survivingArmies;
+}
 
 
 /* ========================================================================================================= */
@@ -497,7 +594,9 @@ void Map::addCountryByReference(Continent* continent, Country* country) {
 	country->setParent(continent);
 	// add the country to the continent
 	continent->addVertex(country);
-	this->registeredStatsObserver->update();
+	if (this->registeredStatsObserver != nullptr) {
+		this->registeredStatsObserver->update();
+	}
 }
 
 void Map::addContinentByName(string continentName) {
@@ -529,7 +628,7 @@ void Map::addEdgeByName(string territoryNameOne, string territoryNameTwo) {
 			cout << "The territories can't be connected because they are not of the same type!!" << endl;
 		}
 		else if (this->edgeExists(terrOne, terrTwo)) {
-			cout << "The territories were not connected because a connection already exists!!" << endl;
+			// cout << "The territories were not connected because a connection already exists!!" << endl;
 		}
 		else {
 			this->addEdgeByReference(terrOne, terrTwo);
@@ -553,7 +652,6 @@ void Map::addEdgeByReference(MapComponent* territoryOne, MapComponent* territory
 		// connections between continents and countries are in the vertices of the continent
 		// create the edge between the territories
 		MapEdge* edge = new MapEdge(territoryOne, territoryTwo);
-
 		// register the edge
 		this->edges.push_back(edge);
 		territoryOne->addEdge(edge);
@@ -639,11 +737,10 @@ vector<Country*> Map::getCountries() {
 	return countries;
 }
 
-Country* Map::setPlayerOwnership(int playerId, string territoryName) {
+Country* Map::setPlayerOwnership(Player* player, string territoryName) {
 	if (this->territoryExists(territoryName)) {
 		Country* terr = dynamic_cast<Country*>(this->mapTerritories.at(this->findTerritory(territoryName)));
-		terr->setPlayerOwnership(playerId);
-		this->registeredStatsObserver->update();
+		terr->setPlayerOwnership(player);
 		// return territory if found
 		return terr;
 	}
@@ -660,4 +757,51 @@ int Map::getNumCountries() {
 
 void Map::attachGameStatsObserver(GameStatsObserver* gso) {
 	this->registeredStatsObserver = gso;
+}
+
+int Map::deservesContinentBonus(int playerId) {
+	map<int, pair<int, int>> ownershipByContinent;
+	map<int, int> contBonusMap;
+	
+	// determine how many countries on each continent the player owns
+	for (MapComponent* c : this->mapTerritories) {
+		if (c->getTerritoryType() == TerritoryType::Country) {
+			Country* currentCountry = dynamic_cast<Country*>(c);
+			if (currentCountry->getPlayerOwnership() == playerId) {
+				if (ownershipByContinent.find(currentCountry->getParentId()) == ownershipByContinent.end()) {
+					// not found
+					pair<int, int> firstPair = pair<int, int>(currentCountry->getParentNumCountries(), 1);
+					ownershipByContinent.insert(pair<int, pair<int, int>>(currentCountry->getParentId(), firstPair));
+					contBonusMap.insert(pair<int, int>(currentCountry->getParentId(), currentCountry->getParentBonus()));
+				}
+				else {
+					ownershipByContinent[currentCountry->getParentId()].second++;
+				}
+			}
+		}
+	}
+
+	int totalBonus = 0;
+
+	for (map<int, pair<int, int>>::iterator itr = ownershipByContinent.begin(); itr != ownershipByContinent.end(); ++itr) {
+		// num territories owned on the continent equals num territories on the continent;
+		if (itr->second.first == itr->second.second) {
+			totalBonus += contBonusMap[itr->first];
+		}
+	}
+
+	return totalBonus;
+}
+
+void Map::setContinentBonus(string continentName, int bonus) {
+	for (int i = 0; i < this->mapTerritories.size(); i++) {
+		if (
+			this->mapTerritories[i]->getTerritoryType() == TerritoryType::Continent &&
+			this->mapTerritories[i]->getTerritoryName().compare(continentName) == 0
+		) {
+			Continent* cont = dynamic_cast<Continent*>(this->mapTerritories[i]);
+			cont->setBonus(bonus);
+			break;
+		}
+	}
 }

@@ -6,10 +6,47 @@
 #include <iomanip>
 #include <ctime>
 
+#include "../Order/Orders.h"
+#include "../Player/player.h"
+#include "../Map/Map.h"
 
 using namespace std;
 
 const int number_of_cards = 50; // number of cards in a deck
+
+class Order;
+class Bomb;
+class Deploy;
+class Blockade;
+class Airlift;
+class Negotiate;
+class Player;
+class Country;
+
+
+
+
+Player* Card::currentlyPlayer = nullptr;
+Country* Card::currentlyAttacking = nullptr;
+Country* Card::currentSource = nullptr;
+int Card::numArmies = 0;
+
+
+void Card::setCurrentInfo(Player* player, Country* attacking, Country* currentSource, int numArmies) {
+	Card::currentlyPlayer = player;
+	Card::currentlyAttacking = attacking;
+	Card::currentSource = currentSource;
+	Card::numArmies = numArmies;
+}
+
+void Card::unsetCurrentInfo() {
+	Card::currentlyPlayer = nullptr;
+	Card::currentlyAttacking = nullptr;
+	Card::currentSource = nullptr;
+	Card::numArmies = 0;
+}
+
+
 
 Card::Card() { //default constructor
 
@@ -52,14 +89,14 @@ string Card::print() const {
 
 
 Deck::Deck() {
-	string types[] = { "BombCard","Reinforcement","Blockade","Airlift","Diplomacy" }; // the 5 possible types of cards
+	string types[] = { "BombCard","Reinforcement","BlockadeCard","AirliftCard","Diplomacy" }; // the 5 possible types of cards
 	
 
 	for (int i = 0; i < 10; i++) {
 		cards.push_back(new BombCard(types[0]));
 		cards.push_back(new Reinforcement(types[1]));
-		cards.push_back(new Blockade(types[2]));
-		cards.push_back(new Airlift(types[3]));
+		cards.push_back(new BlockadeCard(types[2]));
+		cards.push_back(new AirliftCard(types[3]));
 		cards.push_back(new Diplomacy(types[4]));
 	}
 	
@@ -101,16 +138,15 @@ void Deck::shuffleDeck() { // randomizes the deck
 }
 
 Card* Deck::draw() // draws a card from the deck
-{
-	cout << "The player will draw a card" << endl;
-	 
-	Card* a = cards.back();// stores the card from the back of the deck
-	Card* temp = new Card(*a);
-	cards.pop_back(); // remove the last card (the one just taken)
-	cout << "The size of the deck is now " << cards.size() << endl; // indicates the remaining numbers of cards in the deck
-	delete a;
-	return temp; // returns the card removed.
-	
+{	
+	if (this->cards.size() > 0) {
+		Card* a = cards[0];// stores the card from the back of the deck
+		cards.erase(cards.begin() + 0); // remove the last card (the one just taken
+		return a;
+	}
+	else {
+		return nullptr;
+	}
 }
 
 void Deck::printDeck() // prints all the cards in the deck
@@ -125,11 +161,14 @@ void Deck::printDeck() // prints all the cards in the deck
 void Deck::backToDeck(Card* c) { // takes a card and inserts it at the start of the deck
 
 	cards.insert(cards.begin(), c);
-	cout << "Element inserted into the deck " << endl;
+}
+
+void Deck::returnToDeck(Card* c) {
+	this->cards.push_back(c);
 }
 
 Hand::Hand() { // default constrcutor
-
+	this->cards;
 };
 
 
@@ -157,6 +196,12 @@ vector<Card*>Hand::getCards() { // return the vector of pointers to Cards
 	cards.erase(cards.begin() + i);
 	cout << "Card removed from hand !" << endl;
 	return b;
+}
+
+ Card* Hand::getCard() {
+	 Card* card = this->cards[0];
+	 cards.erase(cards.begin() + 0);
+	 return card;
 }
 
 
@@ -194,6 +239,10 @@ BombCard::BombCard():Card() { //default constructor
 	 return *this;
  }
 
+ Order* BombCard::getOrder() {
+	 return new Bomb(Card::currentlyPlayer, Card::currentlyAttacking);
+ }
+
  Reinforcement::Reinforcement() :Card() { //default constructor
 
  }
@@ -218,24 +267,28 @@ BombCard::BombCard():Card() { //default constructor
 	 return *this;
  }
 
+ Order* Reinforcement::getOrder() {
+	 return new Deploy(Card::currentlyPlayer, Card::currentSource, rand() % 100);
+ }
 
- Blockade::Blockade() :Card() { //default constructor
+
+ BlockadeCard::BlockadeCard() :Card() { //default constructor
 
  }
 
- Blockade::Blockade(string t) : Card(t) {
+ BlockadeCard::BlockadeCard(string t) : Card(t) {
 	 //this->type = t; // set the type at creation
  }
 
- Blockade::~Blockade() {} // destructor
+ BlockadeCard::~BlockadeCard() {} // destructor
 
- Blockade::Blockade(const Blockade& obj) :Card(obj) { // copy constructor
+ BlockadeCard::BlockadeCard(const BlockadeCard& obj) :Card(obj) { // copy constructor
 	 //this->type = obj.type;
 
 
  }
 
- Blockade& Blockade :: operator =(const Blockade& c) // assignment operator overload
+ BlockadeCard& BlockadeCard :: operator =(const BlockadeCard& c) // assignment operator overload
  {
 	 Card::operator =(c);
 	 //this->type = c.type;
@@ -243,28 +296,36 @@ BombCard::BombCard():Card() { //default constructor
 	 return *this;
  }
 
- Airlift::Airlift() :Card() { //default constructor
+ Order* BlockadeCard::getOrder() {
+	 return new Blockade(Card::currentlyPlayer, Card::currentSource);
+ }
+
+ AirliftCard::AirliftCard() :Card() { //default constructor
 
  }
 
- Airlift::Airlift(string t) : Card(t) {
+ AirliftCard::AirliftCard(string t) : Card(t) {
 	 //this->type = t; // set the type at creation
  }
 
- Airlift::~Airlift() {} // destructor
+ AirliftCard::~AirliftCard() {} // destructor
 
- Airlift::Airlift(const Airlift& obj) :Card(obj) { // copy constructor
+ AirliftCard::AirliftCard(const AirliftCard& obj) :Card(obj) { // copy constructor
 	 //this->type = obj.type;
 
 
  }
 
- Airlift& Airlift :: operator =(const Airlift& c) // assignment operator overload
+ AirliftCard& AirliftCard :: operator =(const AirliftCard& c) // assignment operator overload
  {
 	 Card::operator =(c);
 	 //this->type = c.type;
 
 	 return *this;
+ }
+
+ Order* AirliftCard::getOrder() {
+	 return new Airlift(Card::currentlyPlayer, Card::currentSource, Card::currentlyAttacking, Card::numArmies);
  }
 
  Diplomacy::Diplomacy() :Card() { //default constructor
@@ -290,4 +351,9 @@ BombCard::BombCard():Card() { //default constructor
 
 	 return *this;
  }
+
+ Order* Diplomacy::getOrder() {
+	 return new Negotiate(Card::currentlyPlayer, Card::currentSource, Card::currentlyAttacking);
+ }
+
 
